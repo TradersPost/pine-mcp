@@ -1,11 +1,20 @@
 import { z } from "zod";
 import type { Index } from "../types.js";
+import { formatNoResults } from "./errors.js";
 
 export const guideSchema = z.object({
   topic: z
     .string()
+    .optional()
     .describe(
-      'Topic to look up (e.g., "execution model", "strategies", "plots", "tables")'
+      'Topic to look up (e.g., "execution model", "strategies", "plots", "tables"). Required when listTopics is false.'
+    ),
+  listTopics: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "If true, returns all available guide topics grouped by category instead of searching."
     ),
 });
 
@@ -13,8 +22,34 @@ export function handleGuide(
   index: Index,
   params: z.infer<typeof guideSchema>
 ): string {
-  const query = params.topic.toLowerCase();
   const topics = Array.from(index.guideTopics.entries());
+
+  // List all topics mode
+  if (params.listTopics) {
+    const grouped = new Map<string, string[]>();
+    for (const [key] of topics) {
+      const parts = key.split(" > ");
+      const category = parts[0] || "other";
+      if (!grouped.has(category)) grouped.set(category, []);
+      grouped.get(category)!.push(key);
+    }
+
+    let result = `# Available Guide Topics (${topics.length} total)\n\n`;
+    for (const [category, topicList] of Array.from(grouped.entries()).sort()) {
+      result += `## ${category} (${topicList.length})\n`;
+      for (const topic of topicList.sort()) {
+        result += `- ${topic}\n`;
+      }
+      result += "\n";
+    }
+    return result;
+  }
+
+  if (!params.topic) {
+    return "Please provide a `topic` to search for, or set `listTopics: true` to see all available topics.";
+  }
+
+  const query = params.topic.toLowerCase();
 
   // Exact match
   const exact = topics.find(([key]) => key.toLowerCase().includes(query));
@@ -55,10 +90,5 @@ export function handleGuide(
     );
   }
 
-  // List available topics
-  const available = topics
-    .map(([key]) => `- ${key}`)
-    .slice(0, 20)
-    .join("\n");
-  return `No topic found matching "${params.topic}".\n\nAvailable topics:\n${available}`;
+  return formatNoResults(params.topic, "pine_guide");
 }

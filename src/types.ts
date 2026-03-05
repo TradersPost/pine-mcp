@@ -29,7 +29,9 @@ export interface SearchResult {
 
 export interface Index {
   chunks: DocChunk[];
-  invertedIndex: Map<string, Set<number>>;
+  invertedIndex: Map<string, Map<number, number>>; // token → (chunkIdx → weight)
   functionLookup: Map<string, DocEntry>;
   guideTopics: Map<string, DocChunk[]>;
+  idf: Map<string, number>;
+  avgChunkLength: number;
 }

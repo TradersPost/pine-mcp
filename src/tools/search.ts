@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Index } from "../types.js";
 import { search } from "../indexer.js";
+import { formatNoResults } from "./errors.js";
 
 export const searchSchema = z.object({
   query: z.string().describe("Search query"),
@@ -45,7 +46,7 @@ export function handleSearch(
   const results = search(index, params.query, params.source, params.limit);
 
   if (results.length === 0) {
-    return `No results found for "${params.query}"`;
+    return formatNoResults(params.query, "pine_search");
   }
 
   return results

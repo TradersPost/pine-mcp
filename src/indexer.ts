@@ -2,6 +2,7 @@ import type { DocChunk, DocEntry, Index } from "./types.js";
 import { tokenize } from "./loader.js";
 
 const SYNONYMS: Record<string, string[]> = {
+  // Technical analysis
   sma: ["ta.sma"],
   ema: ["ta.ema"],
   rsi: ["ta.rsi"],
@@ -15,20 +16,117 @@ const SYNONYMS: Record<string, string[]> = {
   crossunder: ["ta.crossunder"],
   highest: ["ta.highest"],
   lowest: ["ta.lowest"],
+  wma: ["ta.wma"],
+  dema: ["ta.dema"],
+  tema: ["ta.tema"],
+  cci: ["ta.cci"],
+  mfi: ["ta.mfi"],
+  obv: ["ta.obv"],
+  dmi: ["ta.dmi"],
+  supertrend: ["ta.supertrend"],
+  pivothigh: ["ta.pivothigh"],
+  pivotlow: ["ta.pivotlow"],
+  // Natural language aliases
+  "moving average": ["ta.sma"],
+  "simple moving average": ["ta.sma"],
+  "exponential moving average": ["ta.ema"],
+  ma: ["ta.sma"],
+  bollinger: ["ta.bb"],
+  "bollinger bands": ["ta.bb"],
+  "relative strength": ["ta.rsi"],
+  stochastic: ["ta.stoch"],
+  "average true range": ["ta.atr"],
+  momentum: ["ta.mom"],
+  // Strategy
   entry: ["strategy.entry"],
   exit: ["strategy.exit"],
   close: ["strategy.close"],
   order: ["strategy.order"],
   cancel: ["strategy.cancel"],
+  backtest: ["strategy"],
+  trade: ["strategy.entry"],
+  "stop loss": ["strategy.exit"],
+  "take profit": ["strategy.exit"],
+  // Request / Data
   security: ["request.security"],
   earnings: ["request.earnings"],
   dividends: ["request.dividends"],
-  "security_lower_tf": ["request.security_lower_tf"],
+  security_lower_tf: ["request.security_lower_tf"],
+  htf: ["request.security"],
+  "higher timeframe": ["request.security"],
+  "lower timeframe": ["request.security_lower_tf"],
+  tf: ["timeframe.period"],
+  timeframe: ["timeframe.period"],
+  // Drawing
   label: ["label.new"],
   line: ["line.new"],
   box: ["box.new"],
   table: ["table.new"],
+  drawing: ["line.new", "box.new", "label.new"],
+  polyline: ["polyline.new"],
+  // Plotting
+  arrow: ["plotarrow"],
+  candle: ["plotcandle"],
+  histogram: ["plotbar"],
+  shape: ["plotshape"],
+  // Input
+  input: ["input.float", "input.int", "input.bool", "input.string", "input.color"],
+  // Built-in variables
+  ohlc: ["open", "high", "low", "close"],
+  volume: ["volume"],
+  // Alerts
+  alert: ["alert", "alertcondition"],
+  notification: ["alert"],
+  // Colors
+  bgcolor: ["bgcolor"],
+  barcolor: ["barcolor"],
+  // Types
+  bool: ["bool"],
+  int: ["int"],
+  float: ["float"],
+  str: ["str"],
+  // Math
+  abs: ["math.abs"],
+  round: ["math.round"],
+  max: ["math.max"],
+  min: ["math.min"],
+  log: ["math.log"],
+  sqrt: ["math.sqrt"],
+  pow: ["math.pow"],
+  avg: ["math.avg"],
 };
+
+// BM25 parameters
+const BM25_K1 = 1.5;
+const BM25_B = 0.75;
+
+// Field weight constants
+const WEIGHT_NAME = 3.0;
+const WEIGHT_HEADING = 2.0;
+const WEIGHT_PARAMS = 1.5;
+const WEIGHT_CONTENT = 1.0;
+
+function levenshtein(a: string, b: string): number {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  if (Math.abs(a.length - b.length) > 2) return 3; // early exit
+
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      const cost = a[j - 1] === b[i - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return matrix[b.length][a.length];
+}
 
 function parseFunctionEntry(chunk: DocChunk): DocEntry | null {
   const content = chunk.content;
@@ -84,11 +182,24 @@ function parseFunctionEntry(chunk: DocChunk): DocEntry | null {
   };
 }
 
+function addToIndex(
+  invertedIndex: Map<string, Map<number, number>>,
+  token: string,
+  chunkIdx: number,
+  weight: number
+): void {
+  if (!invertedIndex.has(token)) {
+    invertedIndex.set(token, new Map());
+  }
+  const existing = invertedIndex.get(token)!;
+  existing.set(chunkIdx, Math.max(existing.get(chunkIdx) || 0, weight));
+}
+
 export function buildIndex(
   chunks: DocChunk[],
   jsonEntries?: Map<string, DocEntry>
 ): Index {
-  const invertedIndex = new Map<string, Set<number>>();
+  const invertedIndex = new Map<string, Map<number, number>>();
   const functionLookup = new Map<string, DocEntry>();
   const guideTopics = new Map<string, DocChunk[]>();
 
@@ -99,16 +210,24 @@ export function buildIndex(
     }
   }
 
+  let totalTokens = 0;
+
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
+    totalTokens += chunk.tokens.length;
 
-    // Build inverted index
+    // Build inverted index with field-weighted scoring
+    const headingTokens = new Set(tokenize(chunk.heading));
     const uniqueTokens = new Set(chunk.tokens);
+
     for (const token of uniqueTokens) {
-      if (!invertedIndex.has(token)) {
-        invertedIndex.set(token, new Set());
-      }
-      invertedIndex.get(token)!.add(i);
+      const weight = headingTokens.has(token) ? WEIGHT_HEADING : WEIGHT_CONTENT;
+      addToIndex(invertedIndex, token, i, weight);
+    }
+
+    // Index heading tokens with higher weight
+    for (const token of headingTokens) {
+      addToIndex(invertedIndex, token, i, WEIGHT_HEADING);
     }
 
     // Merge markdown reference data with JSON entries
@@ -119,8 +238,20 @@ export function buildIndex(
     ) {
       const mdEntry = parseFunctionEntry(chunk);
       if (mdEntry) {
+        // Index function name tokens with highest weight
+        const nameTokens = tokenize(mdEntry.name);
+        for (const token of nameTokens) {
+          addToIndex(invertedIndex, token, i, WEIGHT_NAME);
+        }
+
+        // Index param tokens with medium weight
+        if (mdEntry.params) {
+          for (const token of new Set(tokenize(mdEntry.params))) {
+            addToIndex(invertedIndex, token, i, WEIGHT_PARAMS);
+          }
+        }
+
         // If no examples found, look at subsequent chunks with same heading
-        // (large sections get sub-split, code blocks may span multiple chunks)
         if (!mdEntry.examples) {
           let combined = "";
           for (let j = i + 1; j < chunks.length && j <= i + 8; j++) {
@@ -167,7 +298,6 @@ export function buildIndex(
           chunk.filePath.includes("visuals/")));
 
     if (isGuideTopic) {
-      // Normalize: underscores to hyphens, "writing_scripts" to "writing"
       const topicKey = chunk.filePath
         .replace(/\.md$/, "")
         .replace(/\//g, " > ")
@@ -177,6 +307,27 @@ export function buildIndex(
         guideTopics.set(topicKey, []);
       }
       guideTopics.get(topicKey)!.push(chunk);
+    }
+  }
+
+  // Also index function names from JSON reference with high weight
+  if (jsonEntries) {
+    for (const [, entry] of jsonEntries) {
+      const nameTokens = tokenize(entry.name);
+      // Find chunks that mention this function and boost them
+      for (const token of nameTokens) {
+        const existing = invertedIndex.get(token);
+        if (existing) {
+          for (const [idx, weight] of existing) {
+            if (weight < WEIGHT_NAME) {
+              const chunk = chunks[idx];
+              if (chunk && chunk.content.includes(entry.name)) {
+                existing.set(idx, WEIGHT_NAME);
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -190,7 +341,18 @@ export function buildIndex(
     }
   }
 
-  return { chunks, invertedIndex, functionLookup, guideTopics };
+  // Compute IDF for BM25
+  const N = chunks.length;
+  const idf = new Map<string, number>();
+  for (const [token, chunkMap] of invertedIndex) {
+    const df = chunkMap.size;
+    // Standard BM25 IDF: log((N - df + 0.5) / (df + 0.5) + 1)
+    idf.set(token, Math.log((N - df + 0.5) / (df + 0.5) + 1));
+  }
+
+  const avgChunkLength = N > 0 ? totalTokens / N : 1;
+
+  return { chunks, invertedIndex, functionLookup, guideTopics, idf, avgChunkLength };
 }
 
 export function search(
@@ -205,18 +367,53 @@ export function search(
   const scores = new Map<number, number>();
 
   for (const token of queryTokens) {
+    const tokenIdf = index.idf.get(token) ?? 0;
+
+    // Exact match with BM25 + field weighting
     const matches = index.invertedIndex.get(token);
     if (matches) {
-      for (const chunkIdx of matches) {
-        scores.set(chunkIdx, (scores.get(chunkIdx) || 0) + 1);
+      for (const [chunkIdx, fieldWeight] of matches) {
+        const chunk = index.chunks[chunkIdx];
+        const dl = chunk.tokens.length;
+        // Count term frequency in this chunk
+        const tf = chunk.tokens.filter((t) => t === token).length;
+        // BM25 term score
+        const bm25 =
+          tokenIdf *
+          ((tf * (BM25_K1 + 1)) /
+            (tf + BM25_K1 * (1 - BM25_B + BM25_B * (dl / index.avgChunkLength))));
+        scores.set(chunkIdx, (scores.get(chunkIdx) || 0) + bm25 * fieldWeight);
       }
     }
-    // Partial match for longer tokens
+
+    // Partial match for longer tokens (substring containment)
     if (token.length >= 3) {
-      for (const [indexedToken, chunkSet] of index.invertedIndex) {
+      for (const [indexedToken, chunkMap] of index.invertedIndex) {
         if (indexedToken !== token && indexedToken.includes(token)) {
-          for (const chunkIdx of chunkSet) {
-            scores.set(chunkIdx, (scores.get(chunkIdx) || 0) + 0.5);
+          const partialIdf = index.idf.get(indexedToken) ?? 0;
+          for (const [chunkIdx, fieldWeight] of chunkMap) {
+            scores.set(
+              chunkIdx,
+              (scores.get(chunkIdx) || 0) + partialIdf * 0.3 * fieldWeight
+            );
+          }
+        }
+      }
+    }
+
+    // Fuzzy match for tokens >= 4 chars (Levenshtein distance <= 2)
+    if (token.length >= 4 && !matches) {
+      for (const [indexedToken, chunkMap] of index.invertedIndex) {
+        if (indexedToken === token) continue;
+        const dist = levenshtein(token, indexedToken);
+        if (dist > 0 && dist <= 2) {
+          const fuzzyIdf = index.idf.get(indexedToken) ?? 0;
+          const fuzzyWeight = 1 - dist / Math.max(token.length, indexedToken.length);
+          for (const [chunkIdx, fieldWeight] of chunkMap) {
+            scores.set(
+              chunkIdx,
+              (scores.get(chunkIdx) || 0) + fuzzyIdf * fuzzyWeight * 0.2 * fieldWeight
+            );
           }
         }
       }
@@ -224,12 +421,9 @@ export function search(
   }
 
   // Heading boost: if query tokens appear in heading, add extra score
-  const headingLower = new Map<number, string>();
   for (const [idx] of scores) {
-    headingLower.set(idx, index.chunks[idx].heading.toLowerCase());
-  }
-  for (const token of queryTokens) {
-    for (const [idx, heading] of headingLower) {
+    const heading = index.chunks[idx].heading.toLowerCase();
+    for (const token of queryTokens) {
       if (heading.includes(token)) {
         scores.set(idx, (scores.get(idx) || 0) + 2);
       }
@@ -239,25 +433,20 @@ export function search(
   const sorted = Array.from(scores.entries())
     .map(([idx, score]) => {
       const chunk = index.chunks[idx];
-      // Slight penalty for very large chunks (they match many tokens but are noisy)
       const sizePenalty = chunk.content.length > 5000 ? 0.8 : 1.0;
-      return {
-        chunk,
-        score: (score / queryTokens.length) * sizePenalty,
-      };
+      return { chunk, score: score * sizePenalty };
     })
     .filter(
       (r) => source === undefined || source === "all" || r.chunk.source === source
     )
     .sort((a, b) => b.score - a.score);
 
-  // Deduplicate: skip chunks with very similar content (e.g., v5 vs v6 of same page)
+  // Deduplicate: skip chunks with very similar content
   const results: typeof sorted = [];
   const seenHeadings = new Set<string>();
   for (const r of sorted) {
     if (results.length >= limit) break;
     const key = r.chunk.heading.toLowerCase();
-    // Allow same heading from different files, but not identical heading+similar content
     const contentSig = r.chunk.content.slice(0, 200).replace(/\s+/g, " ").trim();
     const dedupKey = `${key}::${contentSig.slice(0, 80)}`;
     if (seenHeadings.has(dedupKey)) continue;

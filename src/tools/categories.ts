@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Index } from "../types.js";
+import { formatNoResults } from "./errors.js";
 
 export const categoriesSchema = z.object({
   category: z
@@ -68,7 +69,7 @@ export function handleCategories(
   });
 
   if (unique.length === 0) {
-    return `No entries found in category "${params.category}"`;
+    return formatNoResults(params.category, "pine_categories");
   }
 
   return (

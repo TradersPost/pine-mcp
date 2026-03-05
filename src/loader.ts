@@ -94,11 +94,34 @@ function splitIntoChunks(
 }
 
 export function tokenize(text: string): string[] {
-  return text
+  const tokens: string[] = [];
+  const raw = text
+    // Split camelCase/PascalCase boundaries: "plotArrow" → "plot Arrow"
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
     .toLowerCase()
     .replace(/[^a-z0-9_.]/g, " ")
     .split(/\s+/)
     .filter((t) => t.length > 1);
+
+  for (const token of raw) {
+    tokens.push(token);
+    // For compound tokens without dots, also emit sub-parts
+    // e.g., "plotarrow" → also emit "plot", "arrow" if splittable
+    if (!token.includes(".") && token.length >= 6) {
+      // Try splitting on common Pine Script prefixes
+      const prefixes = ["plot", "bar", "line", "box", "fill", "input", "label", "table", "math", "str", "array", "matrix", "map"];
+      for (const prefix of prefixes) {
+        if (token.startsWith(prefix) && token.length > prefix.length + 1) {
+          const rest = token.slice(prefix.length);
+          if (!tokens.includes(prefix)) tokens.push(prefix);
+          if (rest.length > 1 && !tokens.includes(rest)) tokens.push(rest);
+          break;
+        }
+      }
+    }
+  }
+
+  return tokens;
 }
 
 export async function loadDocs(

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Index } from "../types.js";
 import { tokenize } from "../loader.js";
+import { formatNoResults } from "./errors.js";
 
 export const examplesSchema = z.object({
   query: z.string().describe("Search query for code examples"),
@@ -29,7 +30,7 @@ export function handleExamples(
     .slice(0, params.limit);
 
   if (scored.length === 0) {
-    return `No code examples found for "${params.query}"`;
+    return formatNoResults(params.query, "pine_examples");
   }
 
   // Deduplicate by code content
