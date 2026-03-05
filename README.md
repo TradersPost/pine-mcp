@@ -85,23 +85,180 @@ using the stdio transport. Check your tool's documentation for how to add MCP se
 
 Once installed, just chat with Claude normally. It will automatically use the Pine Script tools when relevant. Here are some things you can ask:
 
-**"What does ta.sma do?"**
-Claude will look up the exact function signature, parameters, description, and a code example.
+- **"What does ta.sma do?"** — Claude looks up the exact function signature, parameters, and code example
+- **"Help me write an RSI indicator"** — Claude searches the docs, looks up `ta.rsi`, `hline`, `bgcolor`, and writes correct v6 code
+- **"How do I add a stop loss?"** — Claude finds `strategy.exit` examples with the right syntax
+- **"What's the difference between plot and plotshape?"** — Claude pulls up both references and compares them
+- **"Show me how request.security works"** — Claude retrieves the multi-timeframe guide topic
+- **"Migrate this v5 script to v6"** — Claude uses the migration guide to walk you through every change
 
-**"Help me write an RSI indicator with overbought/oversold zones"**
-Claude will search the docs for RSI, look up `ta.rsi`, `hline`, `bgcolor`, and write correct v6 code.
+---
 
-**"How do I add a stop loss to my strategy?"**
-Claude will look up `strategy.exit`, find examples, and show you the right syntax.
+## Tools in Action
 
-**"What's the difference between plot and plotshape?"**
-Claude will pull up both references and compare them.
+Behind the scenes, Claude has 5 tools it can call to get accurate Pine Script information. You don't call these directly — Claude picks the right one based on your question. Here's what each one does with real examples of the data they return:
 
-**"Show me how request.security works"**
-Claude will retrieve the guide topic on multi-timeframe data and find relevant code examples.
+### `pine_reference` — Look up any function or variable
 
-**"Migrate this v5 script to v6"**
-Claude can use the migration guide prompt to walk you through every change needed.
+The go-to tool. Give it a function name and get back the full signature, parameters, description, and code example. It even resolves short names automatically.
+
+**Ask:** *"What does ta.rsi do?"*
+
+**Claude gets back:**
+
+```
+# ta.rsi
+
+`ta.rsi(source, length) → series float`
+
+## Parameters
+- source (series int/float)
+- length (simple int)
+
+## Description
+Relative strength index. It is calculated using the ta.rma() of upward
+and downward changes of source over the last length bars.
+
+## Example
+//@version=6
+indicator("ta.rsi")
+plot(ta.rsi(close, 7))
+
+## See Also
+- ta.rma: Moving average used in RSI. It is the exponentially weighted
+  moving average with alpha = 1 / length.
+```
+
+Short names work too — asking for `"sma"` automatically resolves:
+
+```
+"sma" resolves to ta.sma
+
+# ta.sma
+`ta.sma(source, length) → series float`
+```
+
+You can also request just the signature (`format: "signature"`) or just code examples (`format: "examples"`) to save tokens.
+
+---
+
+### `pine_search` — Search all documentation by keyword
+
+Full-text search across the entire reference manual and user guide. Results are ranked by relevance using BM25 scoring, with fuzzy matching for typos.
+
+**Ask:** *"Search for bollinger bands"*
+
+**Claude gets back:**
+
+```
+### Result 1 (score: 18.29, source: manual)
+**ta.bbw()** — pinescriptv6_complete_reference.md
+
+Bollinger Bands Width. The Bollinger Band Width is the difference between
+the upper and the lower Bollinger Bands divided by the middle band.
+
+### Code Example
+//@version=6
+indicator("ta.bbw")
+plot(ta.bbw(close, 5, 4))
+
+### Result 2 (score: 15.06, source: docs)
+**Other timeframes and data** — concepts/other-timeframes-and-data.md
+...
+```
+
+Each result includes the relevance score, source (reference manual vs. user guide), and the matching content with code blocks preserved.
+
+---
+
+### `pine_categories` — Browse what's available
+
+Don't know what functions exist? This tool lists all 48 categories and their entry counts, or drills into a specific category to show every function with a description.
+
+**Ask:** *"What categories are available?"*
+
+**Claude gets back:**
+
+```
+# Reference Categories
+
+- adjustment (3 entries)
+- alert (3 entries)
+- array (56 entries)
+- color (24 entries)
+- input (13 entries)
+- math (28 entries)
+- strategy (96 entries)
+- ta (67 entries)
+- table (23 entries)
+... (48 categories total)
+```
+
+**Ask:** *"Show me the ta category"*
+
+**Claude gets back:**
+
+```
+# ta (67 entries)
+
+- ta.accdist: Accumulation/distribution index.
+- ta.alma: Arnaud Legoux Moving Average.
+- ta.atr: Function atr (average true range) returns the RMA of true range.
+- ta.bb: Bollinger Bands. A Bollinger Band is a technical analysis tool...
+- ta.cci: The CCI (commodity channel index) is calculated as the difference...
+- ta.ema: Exponential moving average...
+- ta.rsi: Relative strength index...
+- ta.sma: The sma function returns the moving average...
+... (67 entries total)
+```
+
+---
+
+### `pine_guide` — Read user guide topics
+
+Retrieves conceptual guides from the Pine Script user manual — execution model, strategies, plotting, timeframes, and more. These explain *how things work*, not just function signatures.
+
+**Ask:** *"How does the execution model work?"*
+
+**Claude gets back:**
+
+```
+# concepts > execution-model
+
+Pine Script® relies on an event-driven, sequential execution model to
+control how a script's compiled source code runs in charts, alerts,
+Deep Backtesting mode, and the Pine Screener.
+
+In contrast to the traditional execution model of most programming
+languages, Pine's runtime system executes a script repeatedly on the
+sequence of historical bars and realtime ticks in the dataset on which
+it runs, performing separate calculations for each bar as it progresses.
+...
+```
+
+Set `listTopics: true` to see all 82 available guide topics grouped by section.
+
+---
+
+### `pine_examples` — Find code examples
+
+Searches specifically for code blocks across all documentation. Great when you want to see how something is used in practice, not just read about it.
+
+**Ask:** *"Find examples of strategy stop loss"*
+
+**Claude gets back:**
+
+```pine
+//@version=6
+strategy("My strategy", overlay = true, process_orders_on_close = true)
+bracketTickSizeInput = input.int(1000, "Stoploss/Take-Profit distance (in ticks)")
+
+longCondition = ta.crossover(ta.sma(close, 14), ta.sma(close, 28))
+if (longCondition)
+    limitLevel = close * 1.01
+    strategy.order("My Long Entry Id", strategy.long, limit = limitLevel)
+    strategy.exit("Exit", "My Long Entry Id", profit = bracketTickSizeInput, loss = bracketTickSizeInput)
+```
 
 ---
 
@@ -117,28 +274,14 @@ These are guided workflows you can trigger. In Claude Code, type the prompt name
 
 ---
 
-## Quick Reference: All Available Tools
+## Built-In Resources
 
-These are the tools Claude has access to behind the scenes. You don't need to call them directly — Claude picks the right one automatically based on your question.
-
-| Tool | What It Does |
-|------|-------------|
-| `pine_search` | Searches all Pine Script documentation by keyword |
-| `pine_reference` | Looks up a specific function or variable by exact name |
-| `pine_guide` | Retrieves user guide topics (strategies, execution model, plotting, etc.) |
-| `pine_examples` | Finds code examples from the documentation |
-| `pine_categories` | Lists all function categories or shows all functions in a category |
-
----
-
-## Quick Reference: Resources
-
-These are static reference pages Claude can pull up:
+These are reference pages Claude can pull up at any time for quick context:
 
 | Resource | What It Is |
 |----------|-----------|
-| `pinescript://manifest` | A directory of everything indexed — all categories, function counts, and guide topics |
-| `pinescript://cheatsheet` | A quick-reference card with the most common Pine Script v6 patterns |
+| `pinescript://manifest` | A directory of everything indexed — all 48 categories, function counts, and 82 guide topics |
+| `pinescript://cheatsheet` | A quick-reference card with the most common Pine Script v6 syntax patterns |
 
 ---
 
