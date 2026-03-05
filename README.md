@@ -3,21 +3,55 @@
 [![npm version](https://img.shields.io/npm/v/pinescript-mcp-server)](https://www.npmjs.com/package/pinescript-mcp-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-An MCP (Model Context Protocol) server that provides Pine Script v6 documentation as searchable tools. Enables AI assistants like Claude to look up Pine Script functions, search documentation, browse guides, and find code examples — without hallucinating outdated syntax.
+**Give your AI assistant expert-level Pine Script knowledge.**
+
+This project lets AI tools like Claude look up any Pine Script function, search TradingView documentation, find code examples, and browse guides — all in real time while you chat. No more hallucinated functions or outdated v5 syntax.
+
+### What does that actually mean?
+
+When you ask Claude to help you write a TradingView indicator or strategy, it doesn't always know the correct Pine Script v6 syntax. This server plugs directly into Claude and gives it access to the **complete Pine Script v6 reference** — 457 functions, 427 variables, and the full user guide — so it can look things up instead of guessing.
+
+It uses something called [MCP (Model Context Protocol)](https://modelcontextprotocol.io), which is a standard way to give AI assistants access to external tools and data. You don't need to understand MCP to use this — just follow the install steps below.
+
+---
+
+## Prerequisites
+
+You need **Node.js version 18 or higher** installed on your computer.
+
+**Don't have Node.js?** Download it from [nodejs.org](https://nodejs.org) — grab the LTS (Long Term Support) version. The installer will walk you through it.
+
+To check if you already have it, open a terminal and type:
+
+```bash
+node --version
+```
+
+If you see `v18.0.0` or higher, you're good to go.
+
+---
 
 ## Installation
 
-### Claude Code
+Pick the method that matches how you use Claude:
+
+### Option A: Claude Code (one command)
+
+If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in your terminal, just run:
 
 ```bash
 claude mcp add pinescript -- npx -y pinescript-mcp-server
 ```
 
-### Claude Desktop
+That's it. Next time you start a Claude Code session, it will have Pine Script tools available.
 
-Edit your config file at:
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+### Option B: Claude Desktop App
+
+1. Open the Claude desktop app
+2. Go to **Settings** (click Claude in the menu bar > Settings)
+3. Click the **Developer** tab
+4. Click **Edit Config**
+5. This opens a JSON file. Add the following (if the file is empty, paste the whole thing; if it already has content, add the `pinescript` entry inside the existing `mcpServers` object):
 
 ```json
 {
@@ -30,112 +64,157 @@ Edit your config file at:
 }
 ```
 
-Restart Claude Desktop after saving.
+6. Save the file
+7. **Completely quit and restart** Claude Desktop (not just close the window — fully quit from the menu bar)
 
-### Other MCP Clients
+When it restarts, you should see a small tool icon in the chat input area. Click it to confirm the Pine Script tools are listed.
 
-Run the server via stdio transport:
+### Option C: Any Other MCP-Compatible Tool
+
+If you're using another tool that supports MCP servers (like Cursor, Windsurf, etc.), point it at:
 
 ```bash
 npx -y pinescript-mcp-server
 ```
 
-## Tools
+using the stdio transport. Check your tool's documentation for how to add MCP servers.
 
-| Tool | Description |
-|------|-------------|
-| `pine_search` | Full-text BM25 search across all Pine Script documentation. Use for general queries when you don't know the exact function name. |
-| `pine_reference` | Look up a specific function, variable, or type by name. Supports `format` parameter: `full`, `signature`, or `examples`. |
-| `pine_guide` | Browse user guide topics (execution model, strategies, plots, etc.). Set `listTopics: true` to see all available topics. |
-| `pine_examples` | Find Pine Script code examples by keyword. Extracts and deduplicates code blocks. |
-| `pine_categories` | Browse function categories (ta, strategy, request, etc.). Omit category to list all. |
+---
 
-## Prompts
+## What Can It Do?
 
-| Prompt | Description |
+Once installed, just chat with Claude normally. It will automatically use the Pine Script tools when relevant. Here are some things you can ask:
+
+**"What does ta.sma do?"**
+Claude will look up the exact function signature, parameters, description, and a code example.
+
+**"Help me write an RSI indicator with overbought/oversold zones"**
+Claude will search the docs for RSI, look up `ta.rsi`, `hline`, `bgcolor`, and write correct v6 code.
+
+**"How do I add a stop loss to my strategy?"**
+Claude will look up `strategy.exit`, find examples, and show you the right syntax.
+
+**"What's the difference between plot and plotshape?"**
+Claude will pull up both references and compare them.
+
+**"Show me how request.security works"**
+Claude will retrieve the guide topic on multi-timeframe data and find relevant code examples.
+
+**"Migrate this v5 script to v6"**
+Claude can use the migration guide prompt to walk you through every change needed.
+
+---
+
+## Built-In Prompt Templates
+
+These are guided workflows you can trigger. In Claude Code, type the prompt name; in Claude Desktop, they appear in the tool menu.
+
+| Prompt | What It Does |
 |--------|-------------|
-| `write_indicator` | Step-by-step guidance for writing a Pine Script v6 indicator with best practices |
-| `debug_strategy` | Systematic debugging checklist for Pine Script strategy issues |
-| `migrate_script` | Guide for migrating a script from an older version (v1-v5) to v6 |
+| `write_indicator` | Walks you through creating a new Pine Script indicator step by step |
+| `debug_strategy` | Gives you a systematic checklist for finding bugs in your strategy |
+| `migrate_script` | Helps you convert a script from v1–v5 to the latest v6 syntax |
 
-## Resources
+---
 
-| URI | Description |
-|-----|-------------|
-| `pinescript://manifest` | Overview of all indexed documentation: categories, counts, and topics |
-| `pinescript://cheatsheet` | Pine Script v6 quick syntax reference with common patterns |
+## Quick Reference: All Available Tools
 
-## Example Usage
+These are the tools Claude has access to behind the scenes. You don't need to call them directly — Claude picks the right one automatically based on your question.
 
-**Look up a function:**
-> "What's the signature for ta.sma?"
-> → Uses `pine_reference` with name `ta.sma`
+| Tool | What It Does |
+|------|-------------|
+| `pine_search` | Searches all Pine Script documentation by keyword |
+| `pine_reference` | Looks up a specific function or variable by exact name |
+| `pine_guide` | Retrieves user guide topics (strategies, execution model, plotting, etc.) |
+| `pine_examples` | Finds code examples from the documentation |
+| `pine_categories` | Lists all function categories or shows all functions in a category |
 
-**Search for a concept:**
-> "How do I create a moving average crossover strategy?"
-> → Uses `pine_search` with query "moving average crossover strategy"
+---
 
-**Browse what's available:**
-> "What strategy functions exist?"
-> → Uses `pine_categories` with category `strategy`
+## Quick Reference: Resources
 
-**Find examples:**
-> "Show me examples of plotshape"
-> → Uses `pine_examples` with query "plotshape"
+These are static reference pages Claude can pull up:
 
-**Discover guide topics:**
-> "What topics can I learn about?"
-> → Uses `pine_guide` with `listTopics: true`
+| Resource | What It Is |
+|----------|-----------|
+| `pinescript://manifest` | A directory of everything indexed — all categories, function counts, and guide topics |
+| `pinescript://cheatsheet` | A quick-reference card with the most common Pine Script v6 patterns |
 
-## What's Included
-
-- Complete Pine Script v6 language reference (457 functions, 427 variables)
-- LLM-optimized reference manual and TradingView user guide
-- BM25 full-text search with fuzzy matching, synonym expansion, and field-weighted scoring
-- Index caching for fast startup (~250ms cached vs ~700ms fresh)
+---
 
 ## Troubleshooting
 
-**No results for a search?**
-- Try shorter keywords (e.g., "sma" instead of "simple moving average calculation")
-- Use `pine_categories` to discover available functions by namespace
-- Common aliases work: "bollinger" finds `ta.bb`, "macd" finds `ta.macd`
+### "command not found: node" or "npx is not recognized"
 
-**Server won't start?**
-- Ensure Node.js 18+ is installed: `node --version`
-- Run health check: `npx pinescript-mcp-server --check`
+Node.js isn't installed. Download it from [nodejs.org](https://nodejs.org) and run the installer. After installing, close and reopen your terminal, then try again.
 
-**Slow startup?**
-- First run builds the search index (~700ms). Subsequent runs use cache (~250ms).
-- The cache auto-invalidates when documentation data changes.
+### Claude doesn't seem to have Pine Script tools
 
-## CLI
+- **Claude Code**: Run `claude mcp list` to check if `pinescript` appears. If not, run the install command again.
+- **Claude Desktop**: Make sure you fully quit and restarted the app (not just closed the window). Click the tool icon in the chat input to verify the tools are listed.
 
-```bash
-pinescript-mcp-server           # Start MCP server (stdio)
-pinescript-mcp-server --check   # Health check — verify data loads correctly
-pinescript-mcp-server --version # Print version
-pinescript-mcp-server --help    # Show help
-```
+### Search returns no results
 
-## Compatibility
+- Try shorter keywords: `"sma"` instead of `"simple moving average calculation"`
+- Common names work: `"bollinger"` finds `ta.bb`, `"macd"` finds `ta.macd`
+- Ask Claude to use `pine_categories` to browse what's available
 
-| Pine Script Version | Support |
-|---------------------|---------|
-| v6 | Full reference, guides, and examples |
-| v5 | Migration guides and legacy docs |
-| v1-v4 | Migration guides only |
+### Something else?
 
-## Development
+Run this command to verify the server is working:
 
 ```bash
-npm install          # Install dependencies
-npm run dev          # Run with tsx (development)
-npm run build        # Compile TypeScript
-npm start            # Run compiled build
-node dist/index.js --check  # Verify build works
+npx pinescript-mcp-server --check
 ```
+
+You should see output like:
+
+```
+Health check passed.
+  Chunks: 2822
+  Functions: 899
+  Guide topics: 82
+```
+
+If that works, the server is fine — the issue is likely in how your AI tool connects to it. Check the config steps above.
+
+Still stuck? [Open an issue on GitHub](https://github.com/TradersPost/pine-mcp/issues).
+
+---
+
+## What's Inside
+
+This package bundles the complete Pine Script v6 documentation so Claude doesn't need to fetch anything from the internet:
+
+- **457 functions** and **427 variables** from the official language reference
+- Full user guide covering strategies, indicators, plots, drawings, and more
+- Migration guides for upgrading from older Pine Script versions
+- Smart search with fuzzy matching (handles typos) and synonym support
+
+---
+
+## For Developers
+
+If you want to contribute or run this locally:
+
+```bash
+git clone https://github.com/TradersPost/pine-mcp.git
+cd pine-mcp
+npm install
+npm run build
+npm start
+```
+
+Other useful commands:
+
+```bash
+npm run dev                    # Run in development mode (auto-reloads)
+node dist/index.js --check     # Verify everything loads correctly
+node dist/index.js --help      # See all CLI options
+```
+
+---
 
 ## License
 
-MIT
+MIT — free to use, modify, and distribute.
