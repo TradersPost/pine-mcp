@@ -1,6 +1,6 @@
 {
   "name": "pinescript-mcp-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server for Pine Script v6 documentation - search, reference lookup, guides, and examples",
   "type": "module",
   "bin": {
