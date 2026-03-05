@@ -1,0 +1,94 @@
+name: Update Pine Script Documentation
+
+on:
+  schedule:
+    # Run every Monday and Thursday at 06:00 UTC
+    - cron: '0 6 * * 1,4'
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Publish even if no changes detected'
+        type: boolean
+        default: false
+
+concurrency:
+  group: update-data
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch fresh data
+        run: npm run update-data
+        env:
+          SCRAPE_DELAY: '300'
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [ -f scripts/.update-result.env ]; then
+            source scripts/.update-result.env
+            echo "has_changes=$CHANGES" >> $GITHUB_OUTPUT
+            echo "summary=$CHANGE_SUMMARY" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Version bump (patch)
+        if: steps.changes.outputs.has_changes == 'true' || inputs.force_publish == true
+        run: |
+          npm version patch --no-git-tag-version
+          echo "NEW_VERSION=$(node -p 'require("./package.json").version')" >> $GITHUB_ENV
+
+      - name: Rebuild with new version
+        if: steps.changes.outputs.has_changes == 'true' || inputs.force_publish == true
+        run: |
+          rm -f data/.index-cache.json
+          npm run build
+          npm run check
+
+      - name: Commit and tag
+        if: steps.changes.outputs.has_changes == 'true' || inputs.force_publish == true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ package.json package-lock.json
+          git commit -m "data: update Pine Script docs to v${NEW_VERSION}
+
+          ${CHANGE_SUMMARY:-Automated data refresh}"
+          git tag "v${NEW_VERSION}"
+          git push origin main --tags
+
+      - name: Publish to npm
+        if: steps.changes.outputs.has_changes == 'true' || inputs.force_publish == true
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.changes.outputs.has_changes }}" == "true" ]; then
+            echo "### Data Updated" >> $GITHUB_STEP_SUMMARY
+            echo "Published v${NEW_VERSION}" >> $GITHUB_STEP_SUMMARY
+            echo "${{ steps.changes.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### No Changes" >> $GITHUB_STEP_SUMMARY
+            echo "Upstream data unchanged. No publish needed." >> $GITHUB_STEP_SUMMARY
+          fi
